@@ -37,29 +37,6 @@ from ctypes import create_string_buffer
 from pathlib import Path
 import shutil
 
-vtf_lib = VTFLib.VTFLib()
-version = "221028"
-print("FastValveMaterial (v"+version+")\n")
-
-f = open("config.md", 'r') # Read the config file (Actual line - 1)
-config = f.read().splitlines()
-config_input_format = config[1]
-config_input_name_scheme = (config[3],config[4],config[5],config[6],config[7])
-config_path = config[9]
-config_input_mat_format = config[11]
-config_output_path = config[13]
-config_midtone = config[15]
-config_export_images = eval(config[17])
-config_material_setup = config[19]
-config_debug_messages = eval(config[21])
-config_print_config = eval(config[23])
-config_force_compression = eval(config[25])
-config_clear_exponent = eval(config[27])
-config_metallic_factor = eval(config[29])/255*0.83 # ? Weird ass conversion to account for the lambert factor
-config_material_proxies = eval(config[31])
-config_orm = eval(config[33])
-config_phongwarps = eval(config[35])
-
 def debug(message):
     if config_debug_messages:
         print("[FVM]", message)
@@ -293,123 +270,147 @@ def export_texture(texture, path, imageFormat=None): # Exports an image to VTF u
 # /////////////////////
 # * Main loop
 # /////////////////////
-for name in find_material_names(): # For every material in the input folder
-    debug("Loading:")
-    try:
-        debug("Material:\t"+ name)
-        # Set the paths to the textures based on the config file
-        if(config_orm):
-            colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[0] + "." + config_input_format))
-            aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
-            normalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[2] + "." + config_input_format))
-            metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
-            glossSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
-        else:
-            colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[0] + "." + config_input_format))
-            if config_input_name_scheme[1] != '': # If a map is set
-                aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[1] + "." + config_input_format))
-            if config_input_name_scheme[2] != '':
+if __name__ == "__main__":
+    vtf_lib = VTFLib.VTFLib()
+    version = "221028"
+    print("FastValveMaterial (v"+version+")\n")
+
+    f = open("config.md", 'r') # Read the config file (Actual line - 1)
+    config = f.read().splitlines()
+    config_input_format = config[1]
+    config_input_name_scheme = (config[3],config[4],config[5],config[6],config[7])
+    config_path = config[9]
+    config_input_mat_format = config[11]
+    config_output_path = config[13]
+    config_midtone = config[15]
+    config_export_images = eval(config[17])
+    config_material_setup = config[19]
+    config_debug_messages = eval(config[21])
+    config_print_config = eval(config[23])
+    config_force_compression = eval(config[25])
+    config_clear_exponent = eval(config[27])
+    config_metallic_factor = eval(config[29])/255*0.83 # ? Weird ass conversion to account for the lambert factor
+    config_material_proxies = eval(config[31])
+    config_orm = eval(config[33])
+    config_phongwarps = eval(config[35])
+
+    for name in find_material_names(): # For every material in the input folder
+        debug("Loading:")
+        try:
+            debug("Material:\t"+ name)
+            # Set the paths to the textures based on the config file
+            if(config_orm):
+                colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[0] + "." + config_input_format))
+                aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
                 normalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[2] + "." + config_input_format))
-            if config_input_name_scheme[3] != '':
+                metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
                 glossSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
+            else:
+                colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[0] + "." + config_input_format))
+                if config_input_name_scheme[1] != '': # If a map is set
+                    aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[1] + "." + config_input_format))
+                if config_input_name_scheme[2] != '':
+                    normalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[2] + "." + config_input_format))
+                if config_input_name_scheme[3] != '':
+                    glossSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
+                if config_input_name_scheme[4] != '':
+                    metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[4] + "." + config_input_format))
+
+        except FileNotFoundError:
+            debug("[ERROR] v"+version+" terminated with exit code -1:\nCouldn't locate files with correct naming scheme, throwing FileNotFoundError!")
+            sys.exit()
+
+        if(config_orm == False):
+            print("Color:\t\t" +colorSt)
+
+            if config_input_name_scheme[1] != '':
+                print("Occlusion:\t" +aoSt)
+            else:
+                print("Occlusion:\t" +"None given, ignoring!")
+                
+            if config_input_name_scheme[2] != '':
+                print("Normal:\t\t" +normalSt)
+            else:
+                print("Normal:\t\t" +"None given, ignoring!")
+
+            if config_input_name_scheme[3] != '':
+                print("Metalness:\t" +metalSt)
+            else:
+                print("Metalness:\t" +"None given, ignoring!")
+                
             if config_input_name_scheme[4] != '':
-                metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[4] + "." + config_input_format))
+                print("Glossiness:\t" +glossSt + "\n")
+            else:
+                print("Glossiness:\t" +"None given, ignoring!\n")
 
-    except FileNotFoundError:
-        debug("[ERROR] v"+version+" terminated with exit code -1:\nCouldn't locate files with correct naming scheme, throwing FileNotFoundError!")
-        sys.exit()
+            colorImage = Image.open(colorSt)
 
-    if(config_orm == False):
-        print("Color:\t\t" +colorSt)
+            if config_input_name_scheme[1] != '':
+                aoImage = Image.open(aoSt)
+            else:
+                aoImage = Image.new('RGB', (colorImage.width, colorImage.height), (255,255,255)) # If no AO image is given, use a white image
 
-        if config_input_name_scheme[1] != '':
-            print("Occlusion:\t" +aoSt)
+            if config_input_name_scheme[2] != '':
+                normalImage = Image.open(normalSt)
+            else:
+                raise FileNotFoundError() # Couldn't find a normal map
+
+            if config_input_name_scheme[3] != '':
+                metalImage = Image.open(metalSt)
+            else:
+                metalImage = Image.new('RGB', (colorImage.width, colorImage.height), (0,0,0)) # If no Metalness image is given, use a black image
+
+            if config_input_name_scheme[4] != '':
+                glossImage = Image.open(glossSt)
+            else:
+                glossImage = Image.new('RGB', (colorImage.width, colorImage.height), (255,255,255)) # If no Gloss image is given, use a white image
+
+            if config_material_setup == "rough":
+                glossImage = ImageOps.invert(glossImage.convert('RGB'))
+            aoImage = fix_scale_mismatch(normalImage, aoImage)
+            metalImage = fix_scale_mismatch(normalImage, metalImage)
+            colorImage = fix_scale_mismatch(normalImage, colorImage)
+            glossImage = fix_scale_mismatch(normalImage, glossImage)
+
+            if config_input_name_scheme[1] != '':
+                do_diffuse(colorImage, aoImage, metalImage, glossImage)
+            else:
+                do_diffuse(colorImage, None, metalImage, glossImage)
+
+            do_exponent(glossImage)
+            do_normal(config_midtone, normalImage, glossImage)
+
+            if(config_clear_exponent):
+                do_nrm_material(name)
+            else:
+                do_material(name)
         else:
-            print("Occlusion:\t" +"None given, ignoring!")
-            
-        if config_input_name_scheme[2] != '':
-            print("Normal:\t\t" +normalSt)
-        else:
-            print("Normal:\t\t" +"None given, ignoring!")
+            print("Color:\t\t" +colorSt)
+            print("ORM:\t\t" +metalSt)
+            print("Normal:\t\t" +normalSt + "\n")
 
-        if config_input_name_scheme[3] != '':
-            print("Metalness:\t" +metalSt)
-        else:
-            print("Metalness:\t" +"None given, ignoring!")
-            
-        if config_input_name_scheme[4] != '':
-            print("Glossiness:\t" +glossSt + "\n")
-        else:
-            print("Glossiness:\t" +"None given, ignoring!\n")
-
-        colorImage = Image.open(colorSt)
-
-        if config_input_name_scheme[1] != '':
-            aoImage = Image.open(aoSt)
-        else:
-            aoImage = Image.new('RGB', (colorImage.width, colorImage.height), (255,255,255)) # If no AO image is given, use a white image
-
-        if config_input_name_scheme[2] != '':
+            colorImage = Image.open(colorSt)
+            ormImage = Image.open(metalSt)
+            try:    
+                (r,g,b) = ormImage.split()
+            except:
+                print("ERROR: Could not convert color bands on ORM! (Do you have empty image channels?)")
+            aoImage = r
+            glossImage = ImageOps.invert(g.convert('RGB'))
+            metalImage = b
             normalImage = Image.open(normalSt)
-        else:
-            raise FileNotFoundError() # Couldn't find a normal map
-
-        if config_input_name_scheme[3] != '':
-            metalImage = Image.open(metalSt)
-        else:
-            metalImage = Image.new('RGB', (colorImage.width, colorImage.height), (0,0,0)) # If no Metalness image is given, use a black image
-
-        if config_input_name_scheme[4] != '':
-            glossImage = Image.open(glossSt)
-        else:
-            glossImage = Image.new('RGB', (colorImage.width, colorImage.height), (255,255,255)) # If no Gloss image is given, use a white image
-
-        if config_material_setup == "rough":
-            glossImage = ImageOps.invert(glossImage.convert('RGB'))
-        aoImage = fix_scale_mismatch(normalImage, aoImage)
-        metalImage = fix_scale_mismatch(normalImage, metalImage)
-        colorImage = fix_scale_mismatch(normalImage, colorImage)
-        glossImage = fix_scale_mismatch(normalImage, glossImage)
-
-        if config_input_name_scheme[1] != '':
             do_diffuse(colorImage, aoImage, metalImage, glossImage)
-        else:
-            do_diffuse(colorImage, None, metalImage, glossImage)
+            do_exponent(glossImage)
+            do_normal(config_midtone, normalImage, glossImage)
 
-        do_exponent(glossImage)
-        do_normal(config_midtone, normalImage, glossImage)
+            if(config_clear_exponent):
+                do_nrm_material(name)
+            else:
+                do_material(name)
 
-        if(config_clear_exponent):
-            do_nrm_material(name)
-        else:
-            do_material(name)
-    else:
-        print("Color:\t\t" +colorSt)
-        print("ORM:\t\t" +metalSt)
-        print("Normal:\t\t" +normalSt + "\n")
+        print("[FVM] Conversion for material '" + name + "' finished, files saved to '" + config_output_path + "'\n")
 
-        colorImage = Image.open(colorSt)
-        ormImage = Image.open(metalSt)
-        try:    
-            (r,g,b) = ormImage.split()
-        except:
-            print("ERROR: Could not convert color bands on ORM! (Do you have empty image channels?)")
-        aoImage = r
-        glossImage = ImageOps.invert(g.convert('RGB'))
-        metalImage = b
-        normalImage = Image.open(normalSt)
-        do_diffuse(colorImage, aoImage, metalImage, glossImage)
-        do_exponent(glossImage)
-        do_normal(config_midtone, normalImage, glossImage)
-
-        if(config_clear_exponent):
-            do_nrm_material(name)
-        else:
-            do_material(name)
-
-    print("[FVM] Conversion for material '" + name + "' finished, files saved to '" + config_output_path + "'\n")
-
-debug("v"+version+" finished with exit code 0: All conversions finished.")
-if(config_print_config):
-    debug("Config file dump:")
-    debug(config)
+    debug("v"+version+" finished with exit code 0: All conversions finished.")
+    if(config_print_config):
+        debug("Config file dump:")
+        debug(config)
