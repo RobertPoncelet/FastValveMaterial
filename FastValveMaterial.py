@@ -30,6 +30,8 @@ from PIL import Image, ImageChops, ImageOps
 import os
 import sys
 import math
+import configparser
+import pprint
 import VTFLibWrapper.VTFLib as VTFLib
 import VTFLibWrapper.VTFLibEnums as VTFLibEnums
 import numpy as np
@@ -37,9 +39,14 @@ from ctypes import create_string_buffer
 from pathlib import Path
 import shutil
 
-def debug(message):
+config_debug_messages = False
+
+def debug(message, pretty=False):
     if config_debug_messages:
-        print("[FVM]", message)
+        if not pretty:
+            print("[FVM]", message)
+        else:
+            pprint.pprint(message)
 
 def check_for_valid_files(path, name, ending): # Check if a file in "path" starts with the desired "name" and ends with "ending"
     for file in os.listdir(path):
@@ -47,15 +54,15 @@ def check_for_valid_files(path, name, ending): # Check if a file in "path" start
         if file.endswith(ending) and file.startswith(name + ending):
             return file
 
-def find_material_names(): # Uses the color map to determine the current material name
+def find_material_names(path, input_mat_format, input_format): # Uses the color map to determine the current material name
     listStuff = []
-    for file in os.listdir(config_path):
-        if file.endswith(config_input_mat_format + "." + config_input_format): # If file ends with "scheme.format
-            listStuff.append(file.replace(config_input_mat_format + "." + config_input_format, "")) # Get rid of "scheme.format" to get the material name and append it to the list of all materials
+    for file in os.listdir(path):
+        if file.endswith(input_mat_format + "." + input_format): # If file ends with "scheme.format
+            listStuff.append(file.replace(input_mat_format + "." + input_format, "")) # Get rid of "scheme.format" to get the material name and append it to the list of all materials
 
     return listStuff
 
-def do_diffuse(cIm, aoIm, mIm, gIm): # Generate Diffuse/Color map
+def do_diffuse(cIm, aoIm, mIm, gIm, output_path): # Generate Diffuse/Color map
     final_diffuse = cIm.convert("RGBA")
     if aoIm != None:
         final_diffuse = ImageChops.multiply(final_diffuse.convert("RGB"), aoIm.convert("RGB")).convert("RGBA") # Combine diffuse and occlusion map
@@ -69,15 +76,15 @@ def do_diffuse(cIm, aoIm, mIm, gIm): # Generate Diffuse/Color map
     final_diffuse = Image.merge("RGBA", color_spc)  # Merge all channels together
     export_texture(final_diffuse, (name+'_c.vtf'), 'DXT5')
     try:
-        Path(config_output_path).mkdir(parents=True, exist_ok=True)
-        shutil.move(name+'_c.vtf', os.path.join(os.getcwd(), config_output_path))
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+        shutil.move(name+'_c.vtf', os.path.join(os.getcwd(), output_path))
         debug("Diffuse exported")
     except Exception as e:
         debug("Diffuse already exists, replacing!")
-        shutil.copyfile(os.path.join(os.getcwd(), name+"_c.vtf"), os.path.join(os.getcwd(), config_output_path+name+"_c.vtf"), follow_symlinks=True)
+        shutil.copyfile(os.path.join(os.getcwd(), name+"_c.vtf"), os.path.join(os.getcwd(), output_path+name+"_c.vtf"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), name+"_c.vtf"))
 
-def do_exponent(gIm): # Generate the exponent map
+def do_exponent(gIm, output_path): # Generate the exponent map
     finalExponent = gIm.convert("RGBA")
     r,g,b,a = finalExponent.split()
     layerImage = Image.new('RGBA', [finalExponent.size[0], finalExponent.size[1]], (0, 217, 0, 100))
@@ -95,15 +102,15 @@ def do_exponent(gIm): # Generate the exponent map
     finalExponent = Image.merge('RGBA', colorSpc)
     export_texture(finalExponent, (name+'_m.vtf'), 'DXT5' if config_force_compression else 'DXT1')
     try:
-        Path(config_output_path).mkdir(parents=True, exist_ok=True)
-        shutil.move(name+'_m.vtf', config_output_path)
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+        shutil.move(name+'_m.vtf', output_path)
         debug("Exponent exported")
     except Exception as e:
         debug("Exponent already exists, replacing!")
-        shutil.copyfile(os.path.join(os.getcwd(), name+"_m.vtf"), os.path.join(os.getcwd(), config_output_path+name+"_m.vtf"), follow_symlinks=True)
+        shutil.copyfile(os.path.join(os.getcwd(), name+"_m.vtf"), os.path.join(os.getcwd(), output_path+name+"_m.vtf"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), name+"_m.vtf"))
 
-def do_normal(config_midtone, nIm, gIm):
+def do_normal(config_midtone, nIm, gIm, output_path):
     finalNormal = nIm.convert('RGBA')
     finalGloss = gIm.convert('RGBA')
     row = finalGloss.size[0]
@@ -124,12 +131,12 @@ def do_normal(config_midtone, nIm, gIm):
         finalNormal.save((name+'_n.tga'), 'TGA')
     export_texture(finalNormal, (name+'_n.vtf'), 'DXT5' if config_force_compression else 'RGBA8888') # Export normal map as *_n.vtf
     try:
-        Path(config_output_path).mkdir(parents=True, exist_ok=True)
-        shutil.move(name+'_n.vtf', config_output_path)
+        Path(output_path).mkdir(parents=True, exist_ok=True)
+        shutil.move(name+'_n.vtf', output_path)
         debug("Normal exported                  ") # Spaces are needed in order to overwrite the progress count, otherwise about 4 chars will stay on screen
     except Exception as e:
         debug("Normal already exists, replacing!")
-        shutil.copyfile(os.path.join(os.getcwd(), name+"_n.vtf"), os.path.join(os.getcwd(), config_output_path+name+"_n.vtf"), follow_symlinks=True)
+        shutil.copyfile(os.path.join(os.getcwd(), name+"_n.vtf"), os.path.join(os.getcwd(), output_path+name+"_n.vtf"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), name+"_n.vtf"))
 
 def do_gamma(x, y, im, mt): # Change the gamma of the given channels of "im" at a given xy coordinate to "config_midtone", similar to how photoshop does it
@@ -160,23 +167,23 @@ def fix_scale_mismatch(rgbIm, target): # Resize the target image to be the same 
     fixedMap = ImageOps.scale(target, factor)
     return fixedMap
 
-def do_material(mName): # Create a material with the given image names
+def do_material(mName, output_path): # Create a material with the given image names
     debug("Creating material '"+ mName + "'")
     proxies = ""
     phong = ""
     if config_material_proxies:
         proxies = ['\n\t"Proxies"', '\n\t{', '\n\t\t"MwEnvMapTint"', '\n\t\t{', '\n\t\t\t"min" "0"', '\n\t\t\t"max" "0.015"', '\n\t\t}', '\n\t}']
     if config_phongwarps:
-        phong = '\n\t"$phongwarptexture" "' + config_output_path + 'phongwarp_steel"'
+        phong = '\n\t"$phongwarptexture" "' + output_path + 'phongwarp_steel"'
     else:
         '\n\t"$PhongFresnelRanges" "[ 4 3 10 ]"'
     writer = ['// Generated by FastValveMaterial v' + version,
     '\n// METALNESS: ' + str(int(config_metallic_factor*255)) + ' GAMMA: ' + str(config_midtone),
     '\n"VertexLitGeneric"',
     '\n{', 
-    '\n\t"$basetexture" "' + config_output_path + mName + '_c"',
-    '\n\t"$bumpmap" "' + config_output_path + mName + '_n"',
-    '\n\t"$phongexponenttexture" "' + config_output_path + mName + '_m"',
+    '\n\t"$basetexture" "' + output_path + mName + '_c"',
+    '\n\t"$bumpmap" "' + output_path + mName + '_n"',
+    '\n\t"$phongexponenttexture" "' + output_path + mName + '_m"',
     '\n\t"$color2" "[ .1 .1 .1 ]"',
     '\n\t"$blendtintbybasealpha" "1"',
     '\n\t"$phong" "1"',
@@ -191,20 +198,20 @@ def do_material(mName): # Create a material with the given image names
     writer += proxies
 
     try:
-        Path(config_output_path).mkdir(parents=True, exist_ok=True)
+        Path(output_path).mkdir(parents=True, exist_ok=True)
         f = open(mName + ".vmt", 'w')
         f.writelines(writer)
         f.close()
-        shutil.move(mName+'.vmt', config_output_path)
-        shutil.copy("phongwarp_steel.vtf", config_output_path)
+        shutil.move(mName+'.vmt', output_path)
+        shutil.copy("phongwarp_steel.vtf", output_path)
         debug("Material exported                  ") # ? Spaces are needed in order to overwrite the progress count, otherwise about 4 chars will stay on screen (?????)
     except Exception as e:
         debug("Material already exists, replacing!")
-        shutil.copy("phongwarp_steel.vtf", config_output_path)
-        shutil.copyfile(os.path.join(os.getcwd(), mName+".vmt"), os.path.join(os.getcwd(), config_output_path+mName+".vmt"), follow_symlinks=True)
+        shutil.copy("phongwarp_steel.vtf", output_path)
+        shutil.copyfile(os.path.join(os.getcwd(), mName+".vmt"), os.path.join(os.getcwd(), output_path+mName+".vmt"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), mName+".vmt"))
 
-def do_nrm_material(mName):
+def do_nrm_material(mName, output_path):
     debug("Creating material '"+ mName + "'")
     proxies = ""
     if config_material_proxies:
@@ -213,9 +220,9 @@ def do_nrm_material(mName):
     '\n// NORMALIZED MATERIAL!'
     '\n"VertexLitGeneric"',
     '\n{', 
-    '\n\t"$basetexture" "' + config_output_path + mName + '_c"',
-    '\n\t"$bumpmap" "' + config_output_path + mName + '_n"',
-    '\n\t"$phongexponenttexture" "' + config_output_path + mName + '_m"',
+    '\n\t"$basetexture" "' + output_path + mName + '_c"',
+    '\n\t"$bumpmap" "' + output_path + mName + '_n"',
+    '\n\t"$phongexponenttexture" "' + output_path + mName + '_m"',
     '\n\t"$phong" "1"',
     '\n\t"$phongboost" "1"',
     '\n\t"$color2" "[ 0 0 0 ]"',
@@ -234,7 +241,7 @@ def do_nrm_material(mName):
         shutil.move(mName+'_s.vmt', "materials/")
     except Exception as e:
         debug("Normalized material already exists, replacing!")
-        shutil.copyfile(os.path.join(os.getcwd(), mName+"_s.vmt"), os.path.join(os.getcwd(), config_output_path+mName+"_s.vmt"), follow_symlinks=True)
+        shutil.copyfile(os.path.join(os.getcwd(), mName+"_s.vmt"), os.path.join(os.getcwd(), output_path+mName+"_s.vmt"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), mName+"_s.vmt"))
 
 def export_texture(texture, path, imageFormat=None): # Exports an image to VTF using VTFLib
@@ -267,6 +274,11 @@ def export_texture(texture, path, imageFormat=None): # Exports an image to VTF u
     vtf_lib.image_save(path)
     vtf_lib.image_destroy()
 
+def get_config(config_path):
+    parser = configparser.ConfigParser()
+    parser.read(config_path)
+    return parser
+
 # /////////////////////
 # * Main loop
 # /////////////////////
@@ -275,24 +287,25 @@ if __name__ == "__main__":
     version = "221028"
     print("FastValveMaterial (v"+version+")\n")
 
-    f = open("config.md", 'r') # Read the config file (Actual line - 1)
-    config = f.read().splitlines()
-    config_input_format = config[1]
-    config_input_name_scheme = (config[3],config[4],config[5],config[6],config[7])
-    config_path = config[9]
-    config_input_mat_format = config[11]
-    config_output_path = config[13]
-    config_midtone = config[15]
-    config_export_images = eval(config[17])
-    config_material_setup = config[19]
-    config_debug_messages = eval(config[21])
-    config_print_config = eval(config[23])
-    config_force_compression = eval(config[25])
-    config_clear_exponent = eval(config[27])
-    config_metallic_factor = eval(config[29])/255*0.83 # ? Weird ass conversion to account for the lambert factor
-    config_material_proxies = eval(config[31])
-    config_orm = eval(config[33])
-    config_phongwarps = eval(config[35])
+    config = get_config("config.ini")
+
+    config_debug_messages = eval(config["Debug"]["DebugMessages"])
+
+    config_input_format = config["Paths"]["InputFileExtension"]
+    config_path = config["Paths"]["InputPath"]
+    config_input_mat_format = config["Paths"]["MaterialName"]
+    config_output_path = config["Paths"]["OutputPath"]
+    config_midtone = config["ImageConfig"]["GammaAdjustment"]
+    config_export_images = eval(config["ImageConfig"]["ExportTGA"])
+    config_material_setup = config["ImageConfig"]["RoughOrGloss"]
+    config_force_compression = eval(config["ImageConfig"]["UseCompression"])
+    config_clear_exponent = eval(config["ImageConfig"]["EmptyGreenOnExponentMap"])
+    config_metallic_factor = eval(config["ImageConfig"]["Metalness"])/255*0.83 # ? Weird ass conversion to account for the lambert factor
+    config_material_proxies = eval(config["ImageConfig"]["UseMaterialProxies"])
+    config_orm = eval(config["ImageConfig"]["ORMTextureMode"])
+    config_phongwarps = eval(config["ImageConfig"]["UsePhongwarps"])
+    config_print_config = eval(config["Debug"]["PrintConfig"])
+    config_suffixes = config["ImageSuffixes"]
 
     for name in find_material_names(): # For every material in the input folder
         debug("Loading:")
@@ -300,21 +313,21 @@ if __name__ == "__main__":
             debug("Material:\t"+ name)
             # Set the paths to the textures based on the config file
             if(config_orm):
-                colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[0] + "." + config_input_format))
-                aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
-                normalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[2] + "." + config_input_format))
-                metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
-                glossSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
+                colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Color"] + "." + config_input_format))
+                aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Roughness"] + "." + config_input_format))
+                normalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Normal"] + "." + config_input_format))
+                metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Roughness"] + "." + config_input_format))
+                glossSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Roughness"] + "." + config_input_format))
             else:
-                colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[0] + "." + config_input_format))
-                if config_input_name_scheme[1] != '': # If a map is set
-                    aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[1] + "." + config_input_format))
-                if config_input_name_scheme[2] != '':
-                    normalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[2] + "." + config_input_format))
-                if config_input_name_scheme[3] != '':
-                    glossSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[3] + "." + config_input_format))
-                if config_input_name_scheme[4] != '':
-                    metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_input_name_scheme[4] + "." + config_input_format))
+                colorSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Color"] + "." + config_input_format))
+                if config_suffixes["AO"] != '': # If a map is set
+                    aoSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["AO"] + "." + config_input_format))
+                if config_suffixes["Normal"] != '':
+                    normalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Normal"] + "." + config_input_format))
+                if config_suffixes["Roughness"] != '':
+                    glossSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Roughness"] + "." + config_input_format))
+                if config_suffixes["Metal"] != '':
+                    metalSt = config_path + "/" + str(check_for_valid_files(config_path, name, config_suffixes["Metal"] + "." + config_input_format))
 
         except FileNotFoundError:
             debug("[ERROR] v"+version+" terminated with exit code -1:\nCouldn't locate files with correct naming scheme, throwing FileNotFoundError!")
@@ -323,44 +336,44 @@ if __name__ == "__main__":
         if(config_orm == False):
             print("Color:\t\t" +colorSt)
 
-            if config_input_name_scheme[1] != '':
+            if config_suffixes["AO"] != '':
                 print("Occlusion:\t" +aoSt)
             else:
                 print("Occlusion:\t" +"None given, ignoring!")
                 
-            if config_input_name_scheme[2] != '':
+            if config_suffixes["Normal"] != '':
                 print("Normal:\t\t" +normalSt)
             else:
                 print("Normal:\t\t" +"None given, ignoring!")
 
-            if config_input_name_scheme[3] != '':
+            if config_suffixes["Roughness"] != '':
                 print("Metalness:\t" +metalSt)
             else:
                 print("Metalness:\t" +"None given, ignoring!")
                 
-            if config_input_name_scheme[4] != '':
+            if config_suffixes["Metal"] != '':
                 print("Glossiness:\t" +glossSt + "\n")
             else:
                 print("Glossiness:\t" +"None given, ignoring!\n")
 
             colorImage = Image.open(colorSt)
 
-            if config_input_name_scheme[1] != '':
+            if config_suffixes["AO"] != '':
                 aoImage = Image.open(aoSt)
             else:
                 aoImage = Image.new('RGB', (colorImage.width, colorImage.height), (255,255,255)) # If no AO image is given, use a white image
 
-            if config_input_name_scheme[2] != '':
+            if config_suffixes["Normal"] != '':
                 normalImage = Image.open(normalSt)
             else:
-                raise FileNotFoundError() # Couldn't find a normal map
+                raise FileNotFoundError("Couldn't find a normal map!")
 
-            if config_input_name_scheme[3] != '':
+            if config_suffixes["Roughness"] != '':
                 metalImage = Image.open(metalSt)
             else:
                 metalImage = Image.new('RGB', (colorImage.width, colorImage.height), (0,0,0)) # If no Metalness image is given, use a black image
 
-            if config_input_name_scheme[4] != '':
+            if config_suffixes["Metal"] != '':
                 glossImage = Image.open(glossSt)
             else:
                 glossImage = Image.new('RGB', (colorImage.width, colorImage.height), (255,255,255)) # If no Gloss image is given, use a white image
@@ -372,18 +385,18 @@ if __name__ == "__main__":
             colorImage = fix_scale_mismatch(normalImage, colorImage)
             glossImage = fix_scale_mismatch(normalImage, glossImage)
 
-            if config_input_name_scheme[1] != '':
-                do_diffuse(colorImage, aoImage, metalImage, glossImage)
+            if config_suffixes["AO"] != '':
+                do_diffuse(colorImage, aoImage, metalImage, glossImage, config_output_path)
             else:
-                do_diffuse(colorImage, None, metalImage, glossImage)
+                do_diffuse(colorImage, None, metalImage, glossImage, config_output_path)
 
-            do_exponent(glossImage)
-            do_normal(config_midtone, normalImage, glossImage)
+            do_exponent(glossImage, config_output_path)
+            do_normal(config_midtone, normalImage, glossImage, config_output_path)
 
             if(config_clear_exponent):
-                do_nrm_material(name)
+                do_nrm_material(name, config_output_path)
             else:
-                do_material(name)
+                do_material(name, config_output_path)
         else:
             print("Color:\t\t" +colorSt)
             print("ORM:\t\t" +metalSt)
@@ -399,18 +412,18 @@ if __name__ == "__main__":
             glossImage = ImageOps.invert(g.convert('RGB'))
             metalImage = b
             normalImage = Image.open(normalSt)
-            do_diffuse(colorImage, aoImage, metalImage, glossImage)
-            do_exponent(glossImage)
-            do_normal(config_midtone, normalImage, glossImage)
+            do_diffuse(colorImage, aoImage, metalImage, glossImage, config_output_path)
+            do_exponent(glossImage, config_output_path)
+            do_normal(config_midtone, normalImage, glossImage, config_output_path)
 
             if(config_clear_exponent):
-                do_nrm_material(name)
+                do_nrm_material(name, config_output_path)
             else:
-                do_material(name)
+                do_material(name, config_output_path)
 
         print("[FVM] Conversion for material '" + name + "' finished, files saved to '" + config_output_path + "'\n")
 
     debug("v"+version+" finished with exit code 0: All conversions finished.")
     if(config_print_config):
         debug("Config file dump:")
-        debug(config)
+        debug(config, pretty=True)
