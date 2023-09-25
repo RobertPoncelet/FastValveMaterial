@@ -39,10 +39,10 @@ from ctypes import create_string_buffer
 from pathlib import Path
 import shutil
 
-config_debug_messages = False
+DEBUG_MESSAGES = False
 
 def debug(message, pretty=False):
-    if config_debug_messages:
+    if DEBUG_MESSAGES:
         if not pretty:
             print("[FVM]", message)
         else:
@@ -62,7 +62,7 @@ def find_material_names(path, input_mat_format, input_format): # Uses the color 
 
     return listStuff
 
-def do_diffuse(cIm, aoIm, mIm, gIm, output_path): # Generate Diffuse/Color map
+def do_diffuse(cIm, aoIm, mIm, gIm, metallic_factor, output_path): # Generate Diffuse/Color map
     final_diffuse = cIm.convert("RGBA")
     if aoIm != None:
         final_diffuse = ImageChops.multiply(final_diffuse.convert("RGB"), aoIm.convert("RGB")).convert("RGBA") # Combine diffuse and occlusion map
@@ -70,7 +70,7 @@ def do_diffuse(cIm, aoIm, mIm, gIm, output_path): # Generate Diffuse/Color map
         final_diffuse = ImageChops.blend(final_diffuse.convert("RGB"), ImageChops.multiply(final_diffuse.convert("RGB"), gIm.convert("RGB")), 0.3).convert("RGBA") # Combine diffuse and glossiness map
     r,g,b,a = final_diffuse.split() # Split diffuse image into channels to modify alpha
     # * I think i forgot to remove some excess conversion but i literally cannot be asked to do so
-    a = Image.blend(cIm.convert("L"), mIm.convert("L"), config_metallic_factor) # Blend the alpha channel with metalImage
+    a = Image.blend(cIm.convert("L"), mIm.convert("L"), metallic_factor) # Blend the alpha channel with metalImage
     a = a.convert("L") # Convert back to Linear
     color_spc = (r,g,b,a)
     final_diffuse = Image.merge("RGBA", color_spc)  # Merge all channels together
@@ -84,7 +84,7 @@ def do_diffuse(cIm, aoIm, mIm, gIm, output_path): # Generate Diffuse/Color map
         shutil.copyfile(os.path.join(os.getcwd(), name+"_c.vtf"), os.path.join(os.getcwd(), output_path+name+"_c.vtf"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), name+"_c.vtf"))
 
-def do_exponent(gIm, output_path): # Generate the exponent map
+def do_exponent(gIm, clear_exponent, force_compression, output_path): # Generate the exponent map
     finalExponent = gIm.convert("RGBA")
     r,g,b,a = finalExponent.split()
     layerImage = Image.new('RGBA', [finalExponent.size[0], finalExponent.size[1]], (0, 217, 0, 100))
@@ -96,11 +96,11 @@ def do_exponent(gIm, output_path): # Generate the exponent map
     b = Image.blend(b, blackImage, 1)
     g = g.convert('L')
     b = b.convert('L')
-    if config_clear_exponent:
+    if clear_exponent:
         g = Image.new('L', [finalExponent.size[0], finalExponent.size[1]], 255)
     colorSpc = (r,g,b,a)
     finalExponent = Image.merge('RGBA', colorSpc)
-    export_texture(finalExponent, (name+'_m.vtf'), 'DXT5' if config_force_compression else 'DXT1')
+    export_texture(finalExponent, (name+'_m.vtf'), 'DXT5' if force_compression else 'DXT1')
     try:
         Path(output_path).mkdir(parents=True, exist_ok=True)
         shutil.move(name+'_m.vtf', output_path)
@@ -110,7 +110,7 @@ def do_exponent(gIm, output_path): # Generate the exponent map
         shutil.copyfile(os.path.join(os.getcwd(), name+"_m.vtf"), os.path.join(os.getcwd(), output_path+name+"_m.vtf"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), name+"_m.vtf"))
 
-def do_normal(config_midtone, nIm, gIm, output_path):
+def do_normal(midtone, nIm, gIm, force_compression, export_images, output_path):
     finalNormal = nIm.convert('RGBA')
     finalGloss = gIm.convert('RGBA')
     row = finalGloss.size[0]
@@ -118,7 +118,7 @@ def do_normal(config_midtone, nIm, gIm, output_path):
     for x in range(1 , row):
         print("[FVM] Normal conversion: (" + str(math.ceil(x/row*100)) + "%)", end="\r")
         for y in range(1, col):
-            value = do_gamma(x,y,finalGloss, int(config_midtone))
+            value = do_gamma(x,y,finalGloss, int(midtone))
             finalGloss.putpixel((x,y), value)
     r,g,b,a = finalNormal.split()
     finalGloss = finalGloss.convert('L')
@@ -127,9 +127,9 @@ def do_normal(config_midtone, nIm, gIm, output_path):
     colorSpc = (r,g,b,a)
     finalNormal = Image.merge('RGBA', colorSpc)
 
-    if config_export_images:
+    if export_images:
         finalNormal.save((name+'_n.tga'), 'TGA')
-    export_texture(finalNormal, (name+'_n.vtf'), 'DXT5' if config_force_compression else 'RGBA8888') # Export normal map as *_n.vtf
+    export_texture(finalNormal, (name+'_n.vtf'), 'DXT5' if force_compression else 'RGBA8888') # Export normal map as *_n.vtf
     try:
         Path(output_path).mkdir(parents=True, exist_ok=True)
         shutil.move(name+'_n.vtf', output_path)
@@ -167,18 +167,18 @@ def fix_scale_mismatch(rgbIm, target): # Resize the target image to be the same 
     fixedMap = ImageOps.scale(target, factor)
     return fixedMap
 
-def do_material(mName, output_path): # Create a material with the given image names
+def do_material(mName, material_proxies, phongwarps, metallic_factor, midtone, output_path): # Create a material with the given image names
     debug("Creating material '"+ mName + "'")
     proxies = ""
     phong = ""
-    if config_material_proxies:
+    if material_proxies:
         proxies = ['\n\t"Proxies"', '\n\t{', '\n\t\t"MwEnvMapTint"', '\n\t\t{', '\n\t\t\t"min" "0"', '\n\t\t\t"max" "0.015"', '\n\t\t}', '\n\t}']
-    if config_phongwarps:
+    if phongwarps:
         phong = '\n\t"$phongwarptexture" "' + output_path + 'phongwarp_steel"'
     else:
         '\n\t"$PhongFresnelRanges" "[ 4 3 10 ]"'
     writer = ['// Generated by FastValveMaterial v' + version,
-    '\n// METALNESS: ' + str(int(config_metallic_factor*255)) + ' GAMMA: ' + str(config_midtone),
+    '\n// METALNESS: ' + str(int(metallic_factor*255)) + ' GAMMA: ' + str(midtone),
     '\n"VertexLitGeneric"',
     '\n{', 
     '\n\t"$basetexture" "' + output_path + mName + '_c"',
@@ -211,10 +211,10 @@ def do_material(mName, output_path): # Create a material with the given image na
         shutil.copyfile(os.path.join(os.getcwd(), mName+".vmt"), os.path.join(os.getcwd(), output_path+mName+".vmt"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), mName+".vmt"))
 
-def do_nrm_material(mName, output_path):
+def do_nrm_material(mName, output_path, material_proxies):
     debug("Creating material '"+ mName + "'")
     proxies = ""
-    if config_material_proxies:
+    if material_proxies:
         proxies = ['\n\t"Proxies"', '\n\t{', '\n\t\t"MwEnvMapTint"', '\n\t\t{', '\n\t\t\t"min" "0"', '\n\t\t\t"max" "0.015"', '\n\t\t}', '\n\t}']
     writer = ['// Generated by FastValveMaterial v'+ version,
     '\n// NORMALIZED MATERIAL!'
@@ -289,7 +289,7 @@ if __name__ == "__main__":
 
     config = get_config("config.ini")
 
-    config_debug_messages = eval(config["Debug"]["DebugMessages"])
+    DEBUG_MESSAGES = eval(config["Debug"]["DebugMessages"])
 
     config_input_format = config["Paths"]["InputFileExtension"]
     config_path = config["Paths"]["InputPath"]
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     config_print_config = eval(config["Debug"]["PrintConfig"])
     config_suffixes = config["ImageSuffixes"]
 
-    for name in find_material_names(): # For every material in the input folder
+    for name in find_material_names(config_path, config_input_mat_format, config_input_format): # For every material in the input folder
         debug("Loading:")
         try:
             debug("Material:\t"+ name)
@@ -386,17 +386,17 @@ if __name__ == "__main__":
             glossImage = fix_scale_mismatch(normalImage, glossImage)
 
             if config_suffixes["AO"] != '':
-                do_diffuse(colorImage, aoImage, metalImage, glossImage, config_output_path)
+                do_diffuse(colorImage, aoImage, metalImage, glossImage, config_metallic_factor, config_output_path)
             else:
-                do_diffuse(colorImage, None, metalImage, glossImage, config_output_path)
+                do_diffuse(colorImage, None, metalImage, glossImage, config_metallic_factor, config_output_path)
 
-            do_exponent(glossImage, config_output_path)
-            do_normal(config_midtone, normalImage, glossImage, config_output_path)
+            do_exponent(glossImage, config_clear_exponent, config_force_compression, config_output_path)
+            do_normal(config_midtone, normalImage, glossImage, config_force_compression, config_export_images, config_output_path)
 
             if(config_clear_exponent):
-                do_nrm_material(name, config_output_path)
+                do_nrm_material(name, config_output_path, config_material_proxies)
             else:
-                do_material(name, config_output_path)
+                do_material(name, config_material_proxies, config_phongwarps, config_metallic_factor, config_midtone, config_output_path)
         else:
             print("Color:\t\t" +colorSt)
             print("ORM:\t\t" +metalSt)
@@ -412,14 +412,14 @@ if __name__ == "__main__":
             glossImage = ImageOps.invert(g.convert('RGB'))
             metalImage = b
             normalImage = Image.open(normalSt)
-            do_diffuse(colorImage, aoImage, metalImage, glossImage, config_output_path)
-            do_exponent(glossImage, config_output_path)
-            do_normal(config_midtone, normalImage, glossImage, config_output_path)
+            do_diffuse(colorImage, aoImage, metalImage, glossImage, config_metallic_factor, config_output_path)
+            do_exponent(glossImage, config_clear_exponent, config_force_compression, config_output_path)
+            do_normal(config_midtone, normalImage, glossImage, config_force_compression, config_export_images, config_output_path)
 
             if(config_clear_exponent):
                 do_nrm_material(name, config_output_path)
             else:
-                do_material(name, config_output_path)
+                do_material(name, config_material_proxies, config_phongwarps, config_metallic_factor, config_midtone, config_output_path)
 
         print("[FVM] Conversion for material '" + name + "' finished, files saved to '" + config_output_path + "'\n")
 
