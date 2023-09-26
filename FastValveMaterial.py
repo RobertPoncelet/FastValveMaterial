@@ -31,6 +31,7 @@ import os
 import sys
 import math
 import configparser
+import argparse
 import pprint
 import VTFLibWrapper.VTFLib as VTFLib
 import VTFLibWrapper.VTFLibEnums as VTFLibEnums
@@ -69,7 +70,7 @@ def do_diffuse(cIm, aoIm, mIm, gIm, metallic_factor, output_path): # Generate Di
     else:
         final_diffuse = ImageChops.blend(final_diffuse.convert("RGB"), ImageChops.multiply(final_diffuse.convert("RGB"), gIm.convert("RGB")), 0.3).convert("RGBA") # Combine diffuse and glossiness map
     r,g,b,a = final_diffuse.split() # Split diffuse image into channels to modify alpha
-    # * I think i forgot to remove some excess conversion but i literally cannot be asked to do so
+    # * I think i forgot to remove some excess conversion but i literally cannot be arsed to do so
     a = Image.blend(cIm.convert("L"), mIm.convert("L"), metallic_factor) # Blend the alpha channel with metalImage
     a = a.convert("L") # Convert back to Linear
     color_spc = (r,g,b,a)
@@ -279,16 +280,11 @@ def get_config(config_path):
     parser.read(config_path)
     return parser
 
-# /////////////////////
-# * Main loop
-# /////////////////////
-if __name__ == "__main__":
-    vtf_lib = VTFLib.VTFLib()
-    version = "221028"
-    print("FastValveMaterial (v"+version+")\n")
+def get_default_config():
+    return get_config("config.ini")
 
-    config = get_config("config.ini")
-
+def run_conversion(config):
+    global DEBUG_MESSAGES
     DEBUG_MESSAGES = eval(config["Debug"]["DebugMessages"])
 
     config_input_format = config["Paths"]["InputFileExtension"]
@@ -427,3 +423,22 @@ if __name__ == "__main__":
     if(config_print_config):
         debug("Config file dump:")
         debug(config, pretty=True)
+
+# /////////////////////
+# * Main loop
+# /////////////////////
+if __name__ == "__main__":
+    vtf_lib = VTFLib.VTFLib()
+    version = "221028"
+    print("FastValveMaterial (v"+version+")\n")
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config")
+    args = parser.parse_args()
+
+    if args.config:
+        config = get_config(args.config)
+    else:
+        config = get_default_config()
+    
+    run_conversion(config)
