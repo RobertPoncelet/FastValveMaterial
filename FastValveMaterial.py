@@ -63,7 +63,7 @@ def find_material_names(path, input_mat_format, input_format): # Uses the color 
 
     return listStuff
 
-def do_diffuse(cIm, aoIm, mIm, gIm, metallic_factor, output_path): # Generate Diffuse/Color map
+def do_diffuse(cIm, aoIm, mIm, gIm, metallic_factor, name, output_path): # Generate Diffuse/Color map
     final_diffuse = cIm.convert("RGBA")
     if aoIm != None:
         final_diffuse = ImageChops.multiply(final_diffuse.convert("RGB"), aoIm.convert("RGB")).convert("RGBA") # Combine diffuse and occlusion map
@@ -85,7 +85,7 @@ def do_diffuse(cIm, aoIm, mIm, gIm, metallic_factor, output_path): # Generate Di
         shutil.copyfile(os.path.join(os.getcwd(), name+"_c.vtf"), os.path.join(os.getcwd(), output_path+name+"_c.vtf"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), name+"_c.vtf"))
 
-def do_exponent(gIm, clear_exponent, force_compression, output_path): # Generate the exponent map
+def do_exponent(gIm, clear_exponent, force_compression, name, output_path): # Generate the exponent map
     finalExponent = gIm.convert("RGBA")
     r,g,b,a = finalExponent.split()
     layerImage = Image.new('RGBA', [finalExponent.size[0], finalExponent.size[1]], (0, 217, 0, 100))
@@ -111,7 +111,7 @@ def do_exponent(gIm, clear_exponent, force_compression, output_path): # Generate
         shutil.copyfile(os.path.join(os.getcwd(), name+"_m.vtf"), os.path.join(os.getcwd(), output_path+name+"_m.vtf"), follow_symlinks=True)
         os.remove(os.path.join(os.getcwd(), name+"_m.vtf"))
 
-def do_normal(midtone, nIm, gIm, force_compression, export_images, output_path):
+def do_normal(midtone, nIm, gIm, force_compression, export_images, name, output_path):
     finalNormal = nIm.convert('RGBA')
     finalGloss = gIm.convert('RGBA')
     row = finalGloss.size[0]
@@ -382,12 +382,12 @@ def run_conversion(config):
             glossImage = fix_scale_mismatch(normalImage, glossImage)
 
             if config_suffixes["AO"] != '':
-                do_diffuse(colorImage, aoImage, metalImage, glossImage, config_metallic_factor, config_output_path)
+                do_diffuse(colorImage, aoImage, metalImage, glossImage, config_metallic_factor, name, config_output_path)
             else:
-                do_diffuse(colorImage, None, metalImage, glossImage, config_metallic_factor, config_output_path)
+                do_diffuse(colorImage, None, metalImage, glossImage, config_metallic_factor, name, config_output_path)
 
-            do_exponent(glossImage, config_clear_exponent, config_force_compression, config_output_path)
-            do_normal(config_midtone, normalImage, glossImage, config_force_compression, config_export_images, config_output_path)
+            do_exponent(glossImage, config_clear_exponent, config_force_compression, name, config_output_path)
+            do_normal(config_midtone, normalImage, glossImage, config_force_compression, config_export_images, name, config_output_path)
 
             if(config_clear_exponent):
                 do_nrm_material(name, config_output_path, config_material_proxies)
@@ -408,9 +408,9 @@ def run_conversion(config):
             glossImage = ImageOps.invert(g.convert('RGB'))
             metalImage = b
             normalImage = Image.open(normalSt)
-            do_diffuse(colorImage, aoImage, metalImage, glossImage, config_metallic_factor, config_output_path)
-            do_exponent(glossImage, config_clear_exponent, config_force_compression, config_output_path)
-            do_normal(config_midtone, normalImage, glossImage, config_force_compression, config_export_images, config_output_path)
+            do_diffuse(colorImage, aoImage, metalImage, glossImage, config_metallic_factor, name, config_output_path)
+            do_exponent(glossImage, config_clear_exponent, config_force_compression, name, config_output_path)
+            do_normal(config_midtone, normalImage, glossImage, config_force_compression, config_export_images, name, config_output_path)
 
             if(config_clear_exponent):
                 do_nrm_material(name, config_output_path)
