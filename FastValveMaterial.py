@@ -33,12 +33,17 @@ import math
 import configparser
 import argparse
 import pprint
-import VTFLibWrapper.VTFLib as VTFLib
-import VTFLibWrapper.VTFLibEnums as VTFLibEnums
 import numpy as np
 from ctypes import create_string_buffer
 from pathlib import Path
 import shutil
+
+try:  # The user might have their own up-to-date version
+    import VTFLibWrapper.VTFLib as VTFLib
+    import VTFLibWrapper.VTFLibEnums as VTFLibEnums
+except ImportError:  # Use the bundled one
+    from .VTFLibWrapper import VTFLib, VTFLibEnums
+    
 
 DEBUG_MESSAGES = False
 
