@@ -286,7 +286,8 @@ def get_config(config_path):
     return parser
 
 def get_default_config():
-    return get_config("config.ini")
+    this_dir = os.path.dirname(__file__)
+    return get_config(os.path.join(this_dir, "config.ini"))
 
 def run_conversion(config):
     global DEBUG_MESSAGES
