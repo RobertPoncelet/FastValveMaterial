@@ -72,11 +72,14 @@ def find_material_names(path, input_mat_name, input_mat_suffix, input_format): #
 def do_diffuse(cIm, aoIm, mIm, gIm, metallic_factor, name, output_path): # Generate Diffuse/Color map
     final_diffuse = cIm.convert("RGBA")
     if aoIm != None:
+        aoIm, final_diffuse = match_sizes(aoIm, final_diffuse)
         final_diffuse = ImageChops.multiply(final_diffuse.convert("RGB"), aoIm.convert("RGB")).convert("RGBA") # Combine diffuse and occlusion map
     else:
+        gIm, final_diffuse = match_sizes(gIm, final_diffuse)
         final_diffuse = ImageChops.blend(final_diffuse.convert("RGB"), ImageChops.multiply(final_diffuse.convert("RGB"), gIm.convert("RGB")), 0.3).convert("RGBA") # Combine diffuse and glossiness map
     r,g,b,a = final_diffuse.split() # Split diffuse image into channels to modify alpha
     # * I think i forgot to remove some excess conversion but i literally cannot be arsed to do so
+    cIm, mIm = match_sizes(cIm, mIm)
     a = Image.blend(cIm.convert("L"), mIm.convert("L"), metallic_factor) # Blend the alpha channel with metalImage
     a = a.convert("L") # Convert back to Linear
     color_spc = (r,g,b,a)
@@ -94,8 +97,8 @@ def do_diffuse(cIm, aoIm, mIm, gIm, metallic_factor, name, output_path): # Gener
 def do_exponent(gIm, clear_exponent, force_compression, name, output_path): # Generate the exponent map
     finalExponent = gIm.convert("RGBA")
     r,g,b,a = finalExponent.split()
-    layerImage = Image.new('RGBA', [finalExponent.size[0], finalExponent.size[1]], (0, 217, 0, 100))
-    blackImage = Image.new('RGBA', [finalExponent.size[0], finalExponent.size[1]], (0, 0, 0, 100))
+    layerImage = Image.new('RGBA', finalExponent.size, (0, 217, 0, 100))
+    blackImage = Image.new('RGBA', finalExponent.size, (0, 0, 0, 100))
     finalExponent = Image.blend(finalExponent, layerImage, 0.5)
     g = g.convert('RGBA')
     b = b.convert('RGBA')
@@ -104,7 +107,7 @@ def do_exponent(gIm, clear_exponent, force_compression, name, output_path): # Ge
     g = g.convert('L')
     b = b.convert('L')
     if clear_exponent:
-        g = Image.new('L', [finalExponent.size[0], finalExponent.size[1]], 255)
+        g = Image.new('L', finalExponent.size, 255)
     colorSpc = (r,g,b,a)
     finalExponent = Image.merge('RGBA', colorSpc)
     export_texture(finalExponent, (name+'_m.vtf'), 'DXT5' if force_compression else 'DXT1')
@@ -173,6 +176,15 @@ def fix_scale_mismatch(rgbIm, target): # Resize the target image to be the same 
     factor = rgbIm.height / target.height
     fixedMap = ImageOps.scale(target, factor)
     return fixedMap
+
+def match_sizes(a, b):  # Use whichever is larger
+    if a.height == b.height:
+        return a, b
+    elif a.height > b.height:
+        b = fix_scale_mismatch(a, b)
+    else:
+        a = fix_scale_mismatch(b, a)
+    return a, b
 
 def get_kv_output_path(output_path):
     folders = Path(output_path).parts
@@ -382,12 +394,12 @@ def run_conversion(config):
             else:
                 normalImage = Image.new('RGB', (colorImage.width, colorImage.height), (128,128,255)) # If no Normal image is given, use a flat one
 
-            if config_suffixes["Roughness"] != '':
+            if config_suffixes["Metal"] != '':
                 metalImage = Image.open(metalSt)
             else:
                 metalImage = Image.new('RGB', (colorImage.width, colorImage.height), (0,0,0)) # If no Metalness image is given, use a black image
 
-            if config_suffixes["Metal"] != '':
+            if config_suffixes["Roughness"] != '':
                 glossImage = Image.open(glossSt)
             else:
                 glossImage = Image.new('RGB', (colorImage.width, colorImage.height), (255,255,255)) # If no Gloss image is given, use a white image
